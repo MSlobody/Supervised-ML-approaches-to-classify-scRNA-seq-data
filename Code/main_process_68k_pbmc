@@ -1,0 +1,81 @@
+# This document was slightly modified from the "10XGenomics/single-cell-3prime-paper" repository
+
+# Copyright (c) 2016 10x Genomics, Inc. All rights reserved.
+#
+
+rm(list=ls()) # clear workspace
+# ----------------------------
+# load relevant libraries
+# ----------------------------
+library(Matrix)
+library(ggplot2)
+library(Rtsne)
+library(svd)
+library(plyr); library(dplyr)
+library(data.table)
+library(pheatmap)
+# -------------------------------------
+# specify paths and load functions
+# ------------------------------------- 
+DATA_DIR <- "/u/mslobodyanyuk/AI_project/Data"
+PROG_DIR <- "/u/mslobodyanyuk/AI_project/Program"    
+RES_DIR  <- "/u/mslobodyanyuk/AI_project/Results"      
+source(file.path(PROG_DIR,'util.R')) 
+# ------------------------------------------------------------
+# load 68k PBMC data, 11 purified PBMC data and meta-data
+# ------------------------------------------------------------
+pbmc_68k <- readRDS(file.path(DATA_DIR,'pbmc68k_data.rds'))
+pure_11 <- readRDS(file.path(DATA_DIR,'all_pure_select_11types.rds'))
+all_data <- pbmc_68k$all_data
+purified_ref_11 <- load_purified_pbmc_types(pure_11,pbmc_68k$ens_genes)
+# --------------------------------------------------------------------------------------
+# normalize by RNA content (umi counts) and select the top 1000 most variable genes
+# --------------------------------------------------------------------------------------
+m<-all_data[[1]]$hg19$mat
+l<-.normalize_by_umi(m)   
+m_n<-l$m
+print("issue")
+df<-.get_variable_gene(m_n)
+print("ornot??") 
+disp_cut_off<-sort(df$dispersion_norm,decreasing=T)[1000]
+df$used<-df$dispersion_norm >= disp_cut_off
+# --------------------------------------------------
+# plot dispersion vs. mean for the genes
+# this produces Supp. Fig. 5c in the manuscript
+# --------------------------------------------------
+#ggplot(df,aes(mean,dispersion,col=used))+geom_point(size=0.5)+scale_x_log10()+scale_y_log10()+
+#      scale_color_manual(values=c("grey","black"))+theme_classic()
+# --------------------------------------------
+# use top 1000 variable genes for PCA 
+# --------------------------------------------
+set.seed(0)
+all_genes = m_n[,order(-df$dispersion_norm)]
+m_n_1000<-m_n[,head(order(-df$dispersion_norm),1000)]
+pca_n_1000<-.do_propack(m_n_1000,50)
+# --------------------------------------------
+# generate 2-D tSNE embedding
+# this step may take a long time
+# --------------------------------------------
+tsne_n_1000<-Rtsne(pca_n_1000$pca,pca=F)
+tdf_n_1000<-data.frame(tsne_n_1000$Y)
+# ---------------------------------------------------------------------------------------------------------------------------
+# assign IDs by comparing the transcriptome profile of each cell to the reference profile from purified PBMC populations
+# this produces Fig. 3j in the manuscript
+# ---------------------------------------------------------------------------------------------------------------------------
+m_filt<-m_n_1000
+use_genes_n<-order(-df$dispersion_norm)
+use_genes_n_id<-all_data[[1]]$hg19$gene_symbols[l$use_genes][order(-df$dispersion_norm)]
+use_genes_n_ens<-all_data[[1]]$hg19$genes[l$use_genes][order(-df$dispersion_norm)]
+z_1000_11<-.compare_by_cor(m_filt,use_genes_n_ens[1:1000],purified_ref_11) 
+# reassign IDs, as there're some overlaps in the purified pbmc populations
+test<-.reassign_pbmc_11(z_1000_11)
+cls_id<-factor(colnames(z_1000_11)[test])
+tdf_n_1000$cls_id<-cls_id
+
+#save(all_genes, file = "/u/mslobodyanyuk/AI_proj_allgenes.Rdata")
+#save(tdf_n_1000,m_n_1000,tsne_n_1000,z_1000_11,file = "/u/mslobodyanyuk/AI_project/Results/input_random_forest.Rdata")
+
+m_n_1000 <- as.data.frame(as.matrix(m_n_1000))
+tdf_n_1000 <- as.data.frame(as.matrix(tdf_n_1000))
+df_export <- cbind(m_n_1000, tdf_n_1000)
+write.csv(x=df_export, file = "/u/mslobodyanyuk/1000_variable_genes.csv")
