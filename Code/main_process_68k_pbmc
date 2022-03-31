@@ -1,4 +1,6 @@
 # This document was slightly modified from the "10XGenomics/single-cell-3prime-paper" repository
+# The "pbmc68k_data.rds" and "all_pure_select_11types.rds" files were acquired from the "10XGenomics/single-cell-3prime-paper" repository
+
 
 # Copyright (c) 2016 10x Genomics, Inc. All rights reserved.
 #
